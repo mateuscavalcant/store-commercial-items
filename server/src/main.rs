@@ -1,5 +1,4 @@
 use actix_web::{web, App, HttpServer, HttpResponse, Responder};
-use serde::Deserialize;
 use std::fs;
 use futures::StreamExt;
 
@@ -22,9 +21,11 @@ async fn upload_image(mut payload: web::Payload) -> impl Responder {
     // Converte os bytes para base64
     let base64_image = base64::encode(&bytes);
 
+
     // Retorna a imagem no formato base64 na resposta HTTP
     HttpResponse::Ok().body(base64_image)
 }
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
