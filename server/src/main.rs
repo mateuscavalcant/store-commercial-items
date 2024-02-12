@@ -1,38 +1,64 @@
-use actix_web::{web, App, HttpServer, HttpResponse, Responder};
-use std::fs;
-use futures::StreamExt;
+use actix_web::{web, App, HttpRequest, HttpServer, Responder};
+use mysql::{prelude::Queryable, Pool, PooledConn};
 
-async fn index() -> impl Responder {
-    // Carrega o conteúdo do arquivo HTML
-    let html_content = fs::read_to_string("templates/index.html")
-        .map_err(|_| actix_web::error::ErrorInternalServerError("Failed to read HTML file"));
-
-    HttpResponse::Ok().content_type("text/html").body(html_content.unwrap())
+// Estrutura para representar os dados do produto
+#[derive(Debug, serde::Deserialize)]
+struct Produto {
+    nome: String,
+    preco: f64,
 }
 
-async fn upload_image(mut payload: web::Payload) -> impl Responder {
-    // Salva o payload recebido em um vetor de bytes
-    let mut bytes = web::BytesMut::new();
-    while let Some(item) = payload.next().await {
-        let item = item.unwrap();
-        bytes.extend_from_slice(&item);
-    }
+// Rota para lidar com o formulário HTML
+async fn formulario(_req: HttpRequest) -> impl Responder {
+    // Formulário HTML simples para inserir nome e preço do produto
+    format!(
+        r#"
+        <html>
+        <head><title>Cadastro de Produtos</title></head>
+        <body>
+            <form action="/cadastro" method="post">
+                Nome do produto: <input type="text" name="nome"><br>
+                Preço do produto: <input type="number" name="preco"><br>
+                <button type="submit">Cadastrar</button>
+            </form>
+        </body>
+        </html>
+    "#
+    )
+}
 
-    // Converte os bytes para base64
-    let base64_image = base64::encode(&bytes);
+// Função para conectar ao banco de dados MySQL
+fn conectar_mysql() -> Pool {
+    mysql::Pool::new("mysql://usuario:senha@localhost/banco_de_dados").unwrap()
+}
 
+// Rota para lidar com o cadastro de produtos
+async fn cadastro(produto: web::Form<Produto>) -> impl Responder {
+    // Conectando ao banco de dados MySQL
+    let pool = conectar_mysql();
+    let mut conn: PooledConn = pool.get_conn().unwrap();
 
-    // Retorna a imagem no formato base64 na resposta HTTP
-    HttpResponse::Ok().body(base64_image)
+    // Inserindo os dados do produto no banco de dados
+    conn.exec_drop(
+        r"INSERT INTO produtos (nome, preco) VALUES (:nome, :preco)",
+        params! {
+            "nome" => &produto.nome,
+            "preco" => &produto.preco,
+        },
+    )
+    .unwrap();
+
+    format!("Produto cadastrado com sucesso: {:?}", produto)
 }
 
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // Configurando o servidor HTTP na porta 8080
     HttpServer::new(|| {
         App::new()
-            .route("/", web::get().to(index))
-            .route("/upload", web::post().to(upload_image))
+            .route("/formulario", web::get().to(formulario))
+            .route("/cadastro", web::post().to(cadastro))
     })
     .bind("127.0.0.1:8080")?
     .run()
